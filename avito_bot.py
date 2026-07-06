@@ -14,7 +14,6 @@ CHAT_ID = "108873834"
 app = Flask(__name__)
 SENT_FILE = "sent_links.json"
 
-# Загружаем уже отправленные ссылки
 if os.path.exists(SENT_FILE):
     with open(SENT_FILE, "r") as f:
         sent_links = set(json.load(f))
@@ -26,7 +25,6 @@ def save_sent_links():
         json.dump(list(sent_links), f)
 
 def send_message(text):
-    """Отправляет сообщение в Telegram"""
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     params = {'chat_id': CHAT_ID, 'text': text}
     try:
@@ -36,7 +34,6 @@ def send_message(text):
         print(f"❌ Ошибка отправки: {e}")
 
 def check_avito():
-    """Проверяет Авито и отправляет новые объявления"""
     global sent_links
     url = 'https://www.avito.ru/rossiya?q=san+san+gear'
     headers = {
@@ -53,12 +50,9 @@ def check_avito():
             href = link.get('href')
             if not href:
                 continue
-                
             full_href = f"https://www.avito.ru{href}" if href.startswith('/') else href
-            
             if full_href in sent_links:
                 continue
-                
             title_elem = link.find('h3') or link.find('div', {'itemprop': 'name'})
             if title_elem and ('san san' in title_elem.text.lower() or 'sansan' in title_elem.text.lower()):
                 title_text = title_elem.text.strip()
@@ -74,18 +68,17 @@ def check_avito():
             print(f"📤 Отправлено новых: {new_count}")
             
     except Exception as e:
-        print(f"❌ Ошибка: {e}")
+        print(f"❌ Ошибка при проверке: {e}")
 
 def run_bot():
-    """Основной цикл бота — проверка каждые 3 часа"""
     while True:
         try:
             check_avito()
-            print(f"💤 Следующая проверка через 3 часа...")
-            time.sleep(10800)  # 3 часа
+            print("💤 Следующая проверка через 3 часа...")
+            time.sleep(10800)
         except Exception as e:
             print(f"❌ Критическая ошибка: {e}")
-            time.sleep(300)  # 5 минут
+            time.sleep(300)
 
 @app.route('/')
 def home():
@@ -93,14 +86,17 @@ def home():
 
 @app.route('/ping')
 def ping():
-    """Эндпоинт для cron-job.org, чтобы бот не засыпал"""
     return "pong", 200
 
 if __name__ == '__main__':
-    # Запускаем бота в фоновом потоке
+    # Сразу выполняем проверку при запуске
+    print("🚀 Бот запущен!")
+    check_avito()  # <-- ЭТО НОВАЯ СТРОЧКА — ПРОВЕРКА СРАЗУ ПРИ ЗАПУСКЕ
+    
+    # Запускаем фоновый поток с бесконечным циклом
     bot_thread = threading.Thread(target=run_bot)
     bot_thread.daemon = True
     bot_thread.start()
-    print("🚀 Бот запущен!")
+
     # Запускаем веб-сервер
-    app.run(host='0.0.0.0', port=10000)
+    app.run(host='0.0.0.0', port=10000, debug=False)
