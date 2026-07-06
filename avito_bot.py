@@ -9,9 +9,9 @@ from datetime import datetime
 app = Flask(__name__)
 
 # ========== ВАШИ ДАННЫЕ ==========
-BOT_TOKEN = "ВАШ_НОВЫЙ_ТОКЕН"
+BOT_TOKEN = "8839285917:AAFdavZFUYO8Dh_0WoEmiAEaytAb8fxWaQc"
 CHAT_ID = "108873834"
-SCREENSHOT_API_KEY = "ВАШ_API_КЛЮЧ"  # Получить на screenshotapi.net (бесплатно 100 скриншотов)
+SCREENSHOT_API_KEY = "P3D54N3-9T245PF-K10BY37-GGYXW7M"  # Получить на screenshotapi.net (бесплатно 100 скриншотов)
 # =================================
 
 # Файл для хранения времени последнего скриншота
