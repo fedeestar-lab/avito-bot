@@ -96,7 +96,7 @@ def ping():
     """Эндпоинт для cron-job.org, чтобы бот не засыпал"""
     return "pong", 200
 
-if name == '__main__':
+if __name__ == '__main__':
     # Запускаем бота в фоновом потоке
     bot_thread = threading.Thread(target=run_bot)
     bot_thread.daemon = True
