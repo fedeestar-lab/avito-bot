@@ -1,106 +1,117 @@
 from flask import Flask
 import requests
-from bs4 import BeautifulSoup
 import time
 import os
 import json
 import threading
-import sys  # <-- НОВАЯ БИБЛИОТЕКА
-
-# ========== ВАШИ ДАННЫЕ ==========
-BOT_TOKEN = "8839285917:AAFdavZFUYO8Dh_0WoEmiAEaytAb8fxWaQc"
-CHAT_ID = "108873834"
-# =================================
+from datetime import datetime
 
 app = Flask(__name__)
-SENT_FILE = "sent_links.json"
 
-# Принудительно включаем немедленный вывод логов
-sys.stdout.reconfigure(line_buffering=True)
+# ========== ВАШИ ДАННЫЕ ==========
+BOT_TOKEN = "ВАШ_НОВЫЙ_ТОКЕН"
+CHAT_ID = "108873834"
+SCREENSHOT_API_KEY = "ВАШ_API_КЛЮЧ"  # Получить на screenshotapi.net (бесплатно 100 скриншотов)
+# =================================
 
-if os.path.exists(SENT_FILE):
-    with open(SENT_FILE, "r") as f:
-        sent_links = set(json.load(f))
-else:
-    sent_links = set()
+# Файл для хранения времени последнего скриншота
+LAST_SCREEN_FILE = "last_screen.json"
 
-def save_sent_links():
-    with open(SENT_FILE, "w") as f:
-        json.dump(list(sent_links), f)
+def load_last_screen_time():
+    if os.path.exists(LAST_SCREEN_FILE):
+        with open(LAST_SCREEN_FILE, "r") as f:
+            return json.load(f).get("last_time", 0)
+    return 0
 
-def send_message(text):
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
-    params = {'chat_id': CHAT_ID, 'text': text}
+def save_last_screen_time(timestamp):
+    with open(LAST_SCREEN_FILE, "w") as f:
+        json.dump({"last_time": timestamp}, f)
+
+def send_photo(image_url, caption):
+    """Отправляет фото в Telegram по ссылке"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendPhoto"
+    data = {
+        'chat_id': CHAT_ID,
+        'photo': image_url,
+        'caption': caption
+    }
     try:
-        requests.get(url, params=params, timeout=30)
-        print(f"✅ Отправлено: {text[:50]}...")
-        sys.stdout.flush()
-        return True
+        response = requests.post(url, data=data, timeout=30)
+        if response.status_code == 200:
+            print("✅ Фото отправлено в Telegram!")
+        else:
+            print(f"❌ Ошибка отправки: {response.text}")
     except Exception as e:
-        print(f"❌ Ошибка отправки: {e}")
-        sys.stdout.flush()
+        print(f"❌ Ошибка: {e}")
+
+def take_screenshot():
+    """Делает скриншот через API"""
+    api_url = "https://screenshotapi.net/api/v1/screenshot"
+    params = {
+        'token': SCREENSHOT_API_KEY,
+        'url': 'https://www.avito.ru/rossiya?q=San+San+Gear',
+        'output': 'image',
+        'width': 1920,
+        'height': 1080,
+        'wait_for': 5000,
+        'fresh': True  # Принудительно обновить страницу
+    }
+    
+    try:
+        response = requests.get(api_url, params=params, timeout=60)
+        data = response.json()
+        
+        if data.get('status') == 'success':
+            image_url = data['screenshot']
+            current_time = datetime.now().strftime('%d.%m.%Y %H:%M')
+            caption = f"🔍 Поиск 'San San Gear' на Авито\n🕐 {current_time}\n\nПроверка завершена!"
+            send_photo(image_url, caption)
+            save_last_screen_time(time.time())
+            return True
+        else:
+            print(f"❌ Ошибка API: {data}")
+            return False
+    except Exception as e:
+        print(f"❌ Ошибка при скриншоте: {e}")
         return False
 
 def check_avito():
-    global sent_links
-    print("🔍 НАЧАЛО ПРОВЕРКИ (check_avito вызвана)")
-    sys.stdout.flush()
-    
-    url = 'https://www.avito.ru/rossiya?q=san+san+gear'
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    """Тестовая проверка — просто пробуем открыть страницу и отправляем результат"""
+    print("🔍 Выполняю тестовую проверку...")
+    return take_screenshot()
+
+def send_test_message():
+    """Отправляет тестовое сообщение, что бот жив"""
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = {
+        'chat_id': CHAT_ID,
+        'text': "✅ Бот запущен и работает!\nЯ буду присылать скриншот раз в день."
     }
     try:
-        print("📡 Отправляю запрос на Авито...")
-        sys.stdout.flush()
-        response = requests.get(url, headers=headers, timeout=30)
-        print(f"📡 Статус ответа: {response.status_code}")
-        sys.stdout.flush()
-        
-        soup = BeautifulSoup(response.text, 'html.parser')
-        links = soup.find_all('a', {'data-marker': 'item'})
-        print(f"🔍 Найдено объявлений: {len(links)}")
-        sys.stdout.flush()
-        
-        new_count = 0
-        for link in links:
-            href = link.get('href')
-            if not href:
-                continue
-            full_href = f"https://www.avito.ru{href}" if href.startswith('/') else href
-            if full_href in sent_links:
-                continue
-            title_elem = link.find('h3') or link.find('div', {'itemprop': 'name'})
-            if title_elem:
-                title_text = title_elem.text.strip()
-                if 'san san gear' in title_text.lower():
-                    print(f"✅ НОВОЕ: {title_text}")
-                    sys.stdout.flush()
-                    sent_links.add(full_href)
-                    save_sent_links()
-                    new_count += 1
-                    send_message(f"🔔 НОВОЕ ОБЪЯВЛЕНИЕ!\n\n{title_text}\n\n🔗 {full_href}")
-        
-        if new_count == 0:
-            print("⏳ Новых объявлений с 'San San Gear' не найдено")
-        else:
-            print(f"📤 Отправлено новых: {new_count}")
-        sys.stdout.flush()
-            
+        requests.post(url, data=data, timeout=30)
+        print("✅ Тестовое сообщение отправлено")
     except Exception as e:
-        print(f"❌ Ошибка при проверке: {e}")
-        sys.stdout.flush()
+        print(f"❌ Ошибка: {e}")
 
 def run_bot():
+    """Основной цикл бота"""
     while True:
         try:
-            check_avito()
-            print("💤 Следующая проверка через 3 часа...")
-            sys.stdout.flush()
-            time.sleep(10800)
+            now = time.time()
+            last_screen = load_last_screen_time()
+            
+            # Проверяем, прошло ли уже 24 часа с последнего скриншота
+            if now - last_screen >= 86400:  # 24 часа
+                print("🕐 Отправляю ежедневный скриншот...")
+                take_screenshot()
+            else:
+                hours_left = int((86400 - (now - last_screen)) / 3600)
+                print(f"💤 Следующий скриншот через ~{hours_left} часов")
+            
+            time.sleep(3600)  # Проверяем каждый час
+            
         except Exception as e:
             print(f"❌ Критическая ошибка: {e}")
-            sys.stdout.flush()
             time.sleep(300)
 
 @app.route('/')
@@ -113,20 +124,29 @@ def ping():
 
 @app.route('/test')
 def test():
-    check_avito()
-    return "✅ Проверка выполнена!", 200
+    """Принудительная проверка — сразу делает скриншот"""
+    print("🔄 Принудительная проверка через /test")
+    take_screenshot()
+    return "✅ Проверка выполнена! Скриншот отправлен.", 200
+
+@app.route('/now')
+def now():
+    """Сразу проверяет и возвращает результат"""
+    result = take_screenshot()
+    if result:
+        return "✅ Скриншот отправлен в Telegram!", 200
+    else:
+        return "❌ Ошибка при создании скриншота", 500
 
 if __name__ == '__main__':
     print("🚀 Бот запущен!")
-    sys.stdout.flush()
     
-    # ПРОВЕРКА СРАЗУ ПРИ СТАРТЕ
-    print("🔄 Вызываю check_avito() при старте...")
-    sys.stdout.flush()
-    check_avito()
+    # Отправляем тестовое сообщение
+    send_test_message()
     
+    # Запускаем основной цикл
     bot_thread = threading.Thread(target=run_bot)
     bot_thread.daemon = True
     bot_thread.start()
-
+    
     app.run(host='0.0.0.0', port=10000, debug=False)
